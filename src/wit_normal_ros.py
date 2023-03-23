@@ -22,7 +22,7 @@ def hex_to_short(raw_data):
 
 # Parsing serial Port Data
 def handleSerialData(raw_data):
-    global buff, key, angle_degree, magnetometer, acceleration, angularVelocity, pub_flag
+    global buff, key, angle_degree, magnetometer, acceleration, angularVelocity, pub_flag, skip_counter
     angle_flag=False
     if python_version == '2':
         buff[key] = ord(raw_data)
@@ -33,7 +33,7 @@ def handleSerialData(raw_data):
     if buff[0] != 0x55:
         key = 0
         return
-    # According to the judgment of the data length bit, the corresponding length data can be obtained
+    # According to the judgment of the data length bit, the corresponding length data can be obtained          
     if key < 11:
         return
     else:
@@ -68,6 +68,12 @@ def handleSerialData(raw_data):
 
         buff = {}
         key = 0
+        skip_counter = skip_counter + 1
+        if skip_counter < 3:
+            return
+        else:
+            skip_counter = 0
+
         if angle_flag:                
             stamp = rospy.get_rostime()
 
@@ -100,6 +106,18 @@ def handleSerialData(raw_data):
             imu_pub.publish(imu_msg)
             mag_pub.publish(mag_msg)
 
+        else:
+            stamp = rospy.get_rostime()
+            imu_msg.header.stamp = stamp
+            imu_msg.header.frame_id = "base_link"
+            imu_msg.angular_velocity.x = angularVelocity[0]
+            imu_msg.angular_velocity.y = angularVelocity[1]
+            imu_msg.angular_velocity.z = angularVelocity[2]
+            imu_msg.linear_acceleration.x = acceleration[0]
+            imu_msg.linear_acceleration.y = acceleration[1]
+            imu_msg.linear_acceleration.z = acceleration[2]
+            imu_pub.publish(imu_msg)
+
 
 key = 0
 flag = 0
@@ -108,7 +126,7 @@ angularVelocity = [0, 0, 0]
 acceleration = [0, 0, 0]
 magnetometer = [0, 0, 0]
 angle_degree = [0, 0, 0]
-
+skip_counter = 0                # using this to avoid 3times output
 
 if __name__ == "__main__":
     python_version = platform.python_version()[0]
@@ -133,7 +151,7 @@ if __name__ == "__main__":
     else:
         imu_pub = rospy.Publisher("wit/imu", Imu, queue_size=10)
         mag_pub = rospy.Publisher("wit/mag", MagneticField, queue_size=10)
-        
+
         while not rospy.is_shutdown():
             try:
                 buff_count = wt_imu.inWaiting()
